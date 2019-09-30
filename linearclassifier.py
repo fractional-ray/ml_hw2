@@ -18,15 +18,9 @@ def linear_predict(data, model):
     :return: length n vector of class predictions
     :rtype: array
     """
-    # TODO fill in your code to predict the class by finding the highest scoring linear combination of features
-    predictions = []
-    w_c = np.array(model["weights"])
-    print(len(data.T))
-    for index in range(len(data.T)):
-        sample = data.T[index,:]
-        value = w_c.T.dot(sample)
-        predictions.append(np.argmax(value))
-    return np.array(predictions)
+    
+    value = model["weights"].T.dot(data)
+    return value.argmax(0)
         
     
 
@@ -44,16 +38,14 @@ def perceptron_update(data, model, label):
     :return: whether the perceptron correctly predicted the provided true label of the example
     :rtype: bool
     """
-    # TODO fill in your code here to implement the perceptron update, directly updating the model dict
-    # and returning the proper boolean value
-    print(data.T)
-    prediction = False 
-    w_c = np.array(model["weights"])
-    f_x = linear_predict(data.T,model)
-
-    #pred = data.dot(w_c)
-    print(pred)
-    return prediction
+    f_x = linear_predict(data,model)
+    if f_x == label:
+        return True 
+    else:
+        model["weights"][:,f_x] -=  data 
+        model["weights"][:,label] +=  data
+        return False
+    
 
 
 def log_reg_train(data, labels, params, model=None, check_gradient=False):
@@ -66,7 +58,7 @@ def log_reg_train(data, labels, params, model=None, check_gradient=False):
     :type labels: array
     :param params: dictionary containing 'lambda' key. Lambda is the regularization parameter and it should be a float
     :type params: dict
-    :param model: dictionary containing 'weights' key. The value for the 'weights' key is a size 
+    :param model: dictio`nary containing 'weights' key. The value for the 'weights' key is a size 
                     (d, num_classes) ndarray
     :type model: dict
     :param check_gradient: Boolean value indicating whether to run the numerical gradient check, which will skip
@@ -94,13 +86,58 @@ def log_reg_train(data, labels, params, model=None, check_gradient=False):
         """
         # reshape the weights, which the optimizer prefers to be a vector, to the more convenient matrix form
         new_weights = new_weights.reshape((d, num_classes))
+        c_lambda = params["lambda"]
+        nll_gradient = tuple()
+        gradient = np.zeros(shape = (d,num_classes))
+        inner_term, last_term = 0, 0
+        #print(new_weights)
+        #print(model)
 
+        frob_norm = np.linalg.norm(new_weights,ord="fro")
+        first_term = c_lambda / 2.0 * frob_norm ** 2 
         # TODO fill in your code here to compute the objective value (nll)
+        for index in range(n):
+            #for c in range(d):
+                #inner_term += np.log(np.exp(new_weights[:,c].T.dot(data[i])))
+            #inner_term += np.log(np.exp(new_weights.T.dot(data[:,index])))
+            y_i = labels[index]
+            inner_term += logsumexp(new_weights.T.dot(data[:,index]),dim = 0)
+            last_term += new_weights[:,y_i].T.dot(data[:,index])
 
+
+
+        nnl = first_term + inner_term - last_term
 
         # TODO fill in your code here to compute the gradient
+        #for i in range(n):
+        #    y_i = labels[i]
+        #    for c in range(d):
+        
+        for c in range(num_classes):
+            first_term = c_lambda * new_weights[:,c] 
+            for i in range(n):
+                y_i = labels[i]
+                s = new_weights.T.dot(data[:,i])
+                scalar = new_weights[:,c].T.dot(data[:,i]) - logsumexp(s, dim = 0)
+                scalar = np.exp(scalar)
+                if y_i == c:
+                    #last_term = new_weights[:,y_i].T.dot(data[:,i])
+                    last_term = 1
+                    #gradient[:,c] = first_term + data[:, i] * scalar + 5 *  last_term
 
-        return nll, gradient
+                else:
+                    #last_term = new_weights[:,y_i].T.dot(data[:,i])
+                    last_term = 0 
+                    #gradient[:,c] = first_term + data[:, i] * scalar - 5 *  last_term 
+                gradient[:,c] += data[:, i] * (scalar - last_term)
+            gradient[:,c] += first_term 
+      
+
+        #print(gradient.shape)
+
+        nll_gradient = (nnl,gradient)
+        return nll_gradient 
+        #return nll, gradient
 
     if check_gradient:
         grad_error = check_grad(lambda w: log_reg_nll(w)[0], lambda w: log_reg_nll(w)[1].ravel(), weights)
@@ -110,7 +147,6 @@ def log_reg_train(data, labels, params, model=None, check_gradient=False):
     # pass the internal objective function into the optimizer
     res = minimize(lambda w: log_reg_nll(w)[0], jac=lambda w: log_reg_nll(w)[1].ravel(), x0=weights)
     weights = res.x
-
     model = {'weights': weights.reshape((d, num_classes))}
 
     return model
